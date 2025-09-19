@@ -15,14 +15,18 @@ use Psr\Http\Message\ServerRequestInterface;
 use TYPO3\CMS\Core\Http\ApplicationType;
 use TYPO3\CMS\Core\Page\PageRenderer;
 
-class PageRendererHook
+/**
+ * PageRendererHook
+ */
+final class PageRendererHook
 {
     /**
-     * Add external hosts to the HTML-header for DNS-refetching
-     * https://www.w3.org/TR/resource-hints/#dns-prefetch
+     * PostTransform for manipulation of concatenated and compressed files
      *
      * @param array $params
      * @param PageRenderer $pageRenderer
+     *
+     * @return void
      */
     public function renderPostTransform(array $params, PageRenderer $pageRenderer): void
     {
@@ -30,21 +34,34 @@ class PageRendererHook
             ($GLOBALS['TYPO3_REQUEST'] ?? null) instanceof ServerRequestInterface
             && ApplicationType::fromRequest($GLOBALS['TYPO3_REQUEST'])->isFrontend()
         ) {
-            // Iterate through resources
-            foreach ($params as $key => $resources) {
-                switch ($key) {
-                    case 'jsLibs':
-                    case 'jsFooterLibs':
-                    case 'jsFiles':
-                    case 'jsFooterFiles':
-                    case 'cssLibs':
-                    case 'cssFiles':
-                        $hosts = $this->getHosts($resources);
-                        foreach (array_unique($hosts) as $host) {
-                            $pageRenderer->addHeaderData('<link rel="dns-prefetch" href="//' . $host . '">');
-                        }
-                        break;
-                }
+            $this->iterateThroughResources($params, $pageRenderer);
+        }
+    }
+
+    /**
+     * Add external hosts to the HTML-header for DNS-refetching
+     * https://www.w3.org/TR/resource-hints/#dns-prefetch
+     *
+     * @param array $params
+     * @param PageRenderer $pageRenderer
+     *
+     * @return void
+     */
+    private function iterateThroughResources(array $params, PageRenderer $pageRenderer): void
+    {
+        foreach ($params as $key => $resources) {
+            switch ($key) {
+                case 'jsLibs':
+                case 'jsFooterLibs':
+                case 'jsFiles':
+                case 'jsFooterFiles':
+                case 'cssLibs':
+                case 'cssFiles':
+                    $hosts = $this->getHostsFromResources($resources);
+                    foreach (array_unique($hosts) as $host) {
+                        $pageRenderer->addHeaderData('<link rel="dns-prefetch" href="//' . $host . '">');
+                    }
+                    break;
             }
         }
     }
@@ -52,14 +69,14 @@ class PageRendererHook
     /**
      * Iterate through files and check if they are local or external.
      *
-     * @param array $file
+     * @param array $files
      *
      * @return array
      */
-    private function getHosts(array $file): array
+    private function getHostsFromResources(array $files): array
     {
         $hosts = [];
-        foreach ($file as $config) {
+        foreach ($files as $config) {
             if (
                 substr($config['file'], 0, 2) !== '//' ||
                 substr($config['file'], 0, 4) !== 'http'
